@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sudokulor Complete!</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background: #222222; 
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- Load Three.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Sudokulor Completion Animation Code -->
+    <script>
+
+// ========== PARAMETERS ==========
+const GRID_SIZE = 9;
+const CUBE_SIZE = 1.0;
+const SPACING = 0.089;
+
+// Your 9 colors
+const COLORS = [
+    0xfd1b1e,  // Red (1)
+    0x44B358,  // Green (2)
+    0x2D6BBE,  // Blue (3)
+    0xF6CC3D,  // Yellow (4)
+    0xcc79cc,  // Pink (5)
+    0x1a89c1,  // Light Blue (6)
+    0xd85d27,  // Orange (7)
+    0x9262D5,  // Purple (8)
+    0x6d4735,  // Brown (9)
+];
+const NULL_COLOR = 0xffffff;  // White for empty cells
+
+const SUDOKULOR_START = [
+    [2, 7, 0, 3, 1, 0, 0, 5, 0],
+    [0, 0, 4, 0, 6, 2, 7, 0, 3],
+    [9, 0, 0, 0, 7, 5, 2, 0, 0],
+    [4, 6, 0, 0, 0, 7, 0, 9, 0],
+    [5, 9, 0, 4, 0, 8, 6, 2, 0],
+    [1, 0, 2, 0, 9, 6, 0, 8, 7],
+    [3, 0, 5, 7, 0, 0, 1, 0, 6],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [7, 0, 9, 0, 0, 1, 0, 0, 2]
+];
+
+const SUDOKULOR_COMPLETE = [
+    [2, 7, 6, 3, 1, 4, 9, 5, 8],
+    [8, 5, 4, 9, 6, 2, 7, 1, 3],
+    [9, 1, 3, 8, 7, 5, 2, 6, 4],
+    [4, 6, 8, 1, 2, 7, 3, 9, 5],
+    [5, 9, 7, 4, 3, 8, 6, 2, 1],
+    [1, 3, 2, 5, 9, 6, 4, 8, 7],
+    [3, 2, 5, 7, 8, 9, 1, 4, 6],
+    [6, 4, 1, 2, 5, 3, 8, 7, 9],
+    [7, 8, 9, 6, 4, 1, 5, 3, 2]
+];
+
+// ========== ANIMATION PARAMETERS ==========
+const ANIMATION_START_FRAME = 24;
+const FRAMES_BETWEEN_CUBES = 8;
+const CUBE_ANIM_DURATION = 90;
+const FPS = 60;  // 60 frames per second
+
+// Rotation axes
+const ROTATION_AXIS_1 = '-z';
+const ROTATION_AXIS_2 = 'x';
+const AXIS_2_START_OFFSET = 10 / FPS;  // Frames to seconds
+
+// Spacing animation parameters
+const SPACING_EXPANSION_START = 15;  // Frames offset from animation start
+const SPACING_MAX_MULTIPLIER = 1.05;  // Maximum spacing expansion (5% larger)
+const SPACING_EXPAND_DURATION = 30;  // Frames to expand
+const SPACING_HOLD_DURATION = 15;  // Frames to hold at max
+const SPACING_CONTRACT_DURATION = 30;  // Frames to contract back
+
+// Convert frames to seconds for Three.js
+const ANIMATION_START_TIME = ANIMATION_START_FRAME / FPS;
+const TIME_BETWEEN_CUBES = FRAMES_BETWEEN_CUBES / FPS;
+const CUBE_ANIM_DURATION_SEC = CUBE_ANIM_DURATION / FPS;
+
+// Convert to seconds
+const SPACING_EXPANSION_START_SEC = SPACING_EXPANSION_START / FPS;
+const SPACING_EXPAND_DURATION_SEC = SPACING_EXPAND_DURATION / FPS;
+const SPACING_HOLD_DURATION_SEC = SPACING_HOLD_DURATION / FPS;
+const SPACING_CONTRACT_DURATION_SEC = SPACING_CONTRACT_DURATION / FPS;
+
+const SPACING_TOTAL_DURATION = SPACING_EXPANSION_START_SEC + 
+                               SPACING_EXPAND_DURATION_SEC + 
+                               SPACING_HOLD_DURATION_SEC + 
+                               SPACING_CONTRACT_DURATION_SEC;
+
+// ========== Create a new SCENE ==========
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a1a); // Dark gray background
+
+// ========== CAMERA DEFINITION ==========
+// PerspectiveCamera(field of view, aspect ratio, near, far)
+const camera = new THREE.PerspectiveCamera(
+    30,                                     // Field of view (degrees)
+    window.innerWidth / window.innerHeight, // Aspect ratio matches the screen
+    0.1,                                   // Near clipping plane
+    1000                                   // Far clipping plane
+);
+// Position camera to see the grid from above at an angle
+camera.position.set(0, 20, 0);
+camera.lookAt(0, 0, 0);  // Look at center of scene
+
+// ========== Create a RENDERER with anti-aliasing ==========
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+// Add an element called canvas to the page
+document.body.appendChild(renderer.domElement); 
+
+// ========== LIGHTING (makes colors look better) ==========
+// Hemisphere light - sky color + ground color (super soft)
+const hemiLight = new THREE.HemisphereLight(
+    0xffffff,  // sky color (white)
+    0x444444,  // ground color (dark gray)
+    0.8        // intensity
+);
+scene.add(hemiLight);
+
+const light2 = new THREE.DirectionalLight(0xffffff, 0.3);
+light2.position.set(-5, 8, -3);
+scene.add(light2);
+
+// ========== HELPER FUNCTIONS ==========
+// Get color for value
+function getColorForValue(value) {
+    if (value === 0) {
+        return NULL_COLOR;  // Empty cell
+    }
+    return COLORS[value - 1];  // Colors array is 0-indexed, values are 1-9
+}
+
+// Create rounded cube
+function createRoundedCube(size, radius) {
+    // Create a box with enough segments for smooth rounding
+    const geometry = new THREE.BoxGeometry(
+        size, 
+        size, 
+        size,
+        20,  // width segments
+        20,  // height segments
+        20   // depth segments
+    );
+    
+    // Round the corners by moving vertices
+    const positions = geometry.attributes.position;
+    const vertex = new THREE.Vector3();
+    
+    const halfSize = size / 2;
+    const innerSize = halfSize - radius;
+    
+    for (let i = 0; i < positions.count; i++) {
+        vertex.fromBufferAttribute(positions, i);
+        
+        // Clamp each axis to the inner box, then extend outward to radius
+        const xs = Math.sign(vertex.x);
+        const ys = Math.sign(vertex.y);
+        const zs = Math.sign(vertex.z);
+        
+        const xAbs = Math.abs(vertex.x);
+        const yAbs = Math.abs(vertex.y);
+        const zAbs = Math.abs(vertex.z);
+        
+        // Find the "clamped" position (inside the rounded region)
+        const xClamped = Math.min(xAbs, innerSize);
+        const yClamped = Math.min(yAbs, innerSize);
+        const zClamped = Math.min(zAbs, innerSize);
+        
+        // Create vector from clamped position
+        const clampedVertex = new THREE.Vector3(
+            xs * xClamped,
+            ys * yClamped,
+            zs * zClamped
+        );
+        
+        // Calculate offset from clamped position
+        const offset = vertex.clone().sub(clampedVertex);
+        const offsetLength = offset.length();
+        
+        // If we're in a corner/edge region, project onto sphere
+        if (offsetLength > 0.001) {
+            offset.normalize().multiplyScalar(radius);
+            const newVertex = clampedVertex.add(offset);
+            positions.setXYZ(i, newVertex.x, newVertex.y, newVertex.z);
+        }
+    }
+    
+    geometry.attributes.position.needsUpdate = true;
+    geometry.computeVertexNormals(); // Smooth shading
+    
+    return geometry;
+}
+
+// Calculate Wave Delay
+function calculateWaveDelay(row, col) {
+    // Distance from top-left corner (0, 0)
+    const distance = Math.sqrt(row * row + col * col);
+    
+    // Wave delay: cubes further away start later
+    const delay = distance * TIME_BETWEEN_CUBES;
+    
+    return ANIMATION_START_TIME + delay;
+}
+
+// Calculate Animation Duration
+function calculateAnimationDuration(rotationCount) {
+    // Base time per rotation
+    const framesPerRotation = 10;  // 10 frames per 90° turn
+    
+    // Minimum duration (even 1 rotation should look good)
+    const minDuration = 30;  // 0.5 seconds
+    
+    const calculatedDuration = rotationCount * framesPerRotation;
+    return Math.max(calculatedDuration, minDuration) / FPS;
+}
+
+// ========== ADDING OUR OBJECTS HERE ==========
+// Create 9x9 grid
+const cubes = [];
+
+const totalSpacing = CUBE_SIZE + SPACING;
+const gridWidth = GRID_SIZE * totalSpacing - SPACING;
+const startX = -gridWidth / 2 + CUBE_SIZE / 2;
+const startZ = -gridWidth / 2 + CUBE_SIZE / 2;
+
+// Create ONE rounded cube geometry that all cubes will share
+const cubeGeometry = createRoundedCube(CUBE_SIZE, 0.08);
+
+console.log("Creating grid...");
+
+for (let row = 0; row < GRID_SIZE; row++) {
+    cubes[row] = [];
+    
+    for (let col = 0; col < GRID_SIZE; col++) {
+        // Get the starting value from sudoku array
+        const startValue = SUDOKULOR_START[row][col];
+        const finalValue = SUDOKULOR_COMPLETE[row][col];
+        
+        // Get color for this value
+        const color = getColorForValue(startValue);
+        
+        // Create material with the correct color
+        const material = new THREE.MeshStandardMaterial({ 
+            color: color
+        });
+        
+        const cube = new THREE.Mesh(cubeGeometry, material);
+        
+        // Position in grid
+        cube.position.x = startX + col * totalSpacing;
+        cube.position.y = 0;
+        cube.position.z = startZ + row * totalSpacing;
+
+        // Store original position for spacing animation
+        cube.userData.originalX = cube.position.x;
+        cube.userData.originalZ = cube.position.z;
+        
+        // Store data for animation
+        cube.userData.row = row;
+        cube.userData.col = col;
+        cube.userData.startValue = startValue;
+        cube.userData.finalValue = finalValue;
+        cube.userData.currentValue = startValue;
+
+        // Calculate animation timing
+        cube.userData.animStartTime = calculateWaveDelay(row, col);
+        // Scale duration based on number of rotations
+        if (cube.userData.shouldAnimate) {
+            cube.userData.animDuration = calculateAnimationDuration(finalValue);
+        } else {
+            cube.userData.animDuration = CUBE_ANIM_DURATION_SEC;
+        }
+        cube.userData.shouldAnimate = (startValue === 0);  // Only empty cubes animate
+
+        // Calculate how many 90° rotations needed
+        if (cube.userData.shouldAnimate) {
+            cube.userData.rotationCount = finalValue;  // 0→6 means 6 rotations
+            cube.userData.totalRotation = finalValue * (Math.PI / 2);  // 90° per rotation
+        } else {
+            cube.userData.rotationCount = 0;
+            cube.userData.totalRotation = 0;
+        }
+
+        // Animation progress tracking
+        cube.userData.animProgress = 0;  // 0 to 1 (0% to 100%)
+        cube.userData.isAnimating = false;
+        
+        scene.add(cube);
+        cubes[row][col] = cube;
+    }
+}
+
+console.log(`Created ${GRID_SIZE * GRID_SIZE} cubes with sudoku colors!`);
+
+// ========== ANIMATION LOOP ==========
+const clock = new THREE.Clock();
+let elapsedTime = 0;
+
+function animate() {
+    requestAnimationFrame(animate);
+    
+    // Update elapsed time
+    const deltaTime = clock.getDelta();
+    elapsedTime += deltaTime;
+    
+    // Update each cube's animation
+    for (let row = 0; row < GRID_SIZE; row++) {
+        for (let col = 0; col < GRID_SIZE; col++) {
+            const cube = cubes[row][col];
+            
+            // ========== SPACING ANIMATION (ALL CUBES) ==========
+            const spacingStartTime = cube.userData.animStartTime + SPACING_EXPANSION_START_SEC;
+            const spacingTimeSinceStart = elapsedTime - spacingStartTime;
+            
+            let spacingMultiplier = 1.0;
+            
+            if (spacingTimeSinceStart > 0) {
+                const expandEnd = SPACING_EXPAND_DURATION_SEC;
+                const holdEnd = expandEnd + SPACING_HOLD_DURATION_SEC;
+                const contractEnd = holdEnd + SPACING_CONTRACT_DURATION_SEC;
+                
+                if (spacingTimeSinceStart < expandEnd) {
+                    const expandProgress = spacingTimeSinceStart / SPACING_EXPAND_DURATION_SEC;
+                    const easedExpand = expandProgress * expandProgress * (3 - 2 * expandProgress);
+                    spacingMultiplier = 1.0 + (SPACING_MAX_MULTIPLIER - 1.0) * easedExpand;
+                } else if (spacingTimeSinceStart < holdEnd) {
+                    spacingMultiplier = SPACING_MAX_MULTIPLIER;
+                } else if (spacingTimeSinceStart < contractEnd) {
+                    const contractProgress = (spacingTimeSinceStart - holdEnd) / SPACING_CONTRACT_DURATION_SEC;
+                    const easedContract = contractProgress * contractProgress * (3 - 2 * contractProgress);
+                    spacingMultiplier = SPACING_MAX_MULTIPLIER - (SPACING_MAX_MULTIPLIER - 1.0) * easedContract;
+                }
+            }
+            
+            cube.position.x = cube.userData.originalX * spacingMultiplier;
+            cube.position.z = cube.userData.originalZ * spacingMultiplier;
+            
+            // ========== ROTATION ANIMATION (ONLY EMPTY CUBES) ==========
+            // Skip cubes that don't animate
+            if (!cube.userData.shouldAnimate) continue;
+            
+            // Check if this cube should start animating
+            if (elapsedTime >= cube.userData.animStartTime && !cube.userData.isAnimating) {
+                cube.userData.isAnimating = true;
+                console.log(`Cube [${row},${col}] started animating at ${elapsedTime.toFixed(2)}s`);
+            }
+            
+            // If animating, update progress
+            if (cube.userData.isAnimating) {
+                const timeSinceStart = elapsedTime - cube.userData.animStartTime;
+                
+                // Calculate progress (0 to 1)
+                cube.userData.animProgress = Math.min(timeSinceStart / cube.userData.animDuration, 1);
+                
+                // Apply easing (smooth curve)
+                const t = cube.userData.animProgress;
+                const easedProgress = t * t * (3 - 2 * t);  // Smoothstep (ease-in-out)
+                
+                // ========== DUAL-AXIS ROTATION (SEQUENTIAL) ==========
+                const totalRotation = cube.userData.totalRotation;
+                
+                // Split rotations between two axes (handle odd numbers properly)
+                const rotationsAxis1 = Math.ceil(cube.userData.rotationCount / 2);  // Round up
+                const rotationsAxis2 = Math.floor(cube.userData.rotationCount / 2); // Round down
+                
+                const axis1TotalRotation = rotationsAxis1 * (Math.PI / 2);
+                const axis2TotalRotation = rotationsAxis2 * (Math.PI / 2);
+                
+                // Calculate phase durations based on actual rotation split
+                const totalRotationCount = cube.userData.rotationCount;
+                const phase1Duration = rotationsAxis1 / totalRotationCount;
+                
+                let axis1Rotation = 0;
+                let axis2Rotation = 0;
+                
+                // PHASE 1: First axis rotations
+                if (easedProgress <= phase1Duration) {
+                    const phase1Progress = easedProgress / phase1Duration;
+                    axis1Rotation = phase1Progress * axis1TotalRotation;
+                } else {
+                    axis1Rotation = axis1TotalRotation;
+                }
+                
+                // PHASE 2: Second axis rotations (starts immediately after phase 1)
+                if (easedProgress > phase1Duration) {
+                    const phase2Duration = 1.0 - phase1Duration;
+                    const phase2Progress = (easedProgress - phase1Duration) / phase2Duration;
+                    axis2Rotation = phase2Progress * axis2TotalRotation;
+                }
+                
+                // Parse axis and direction
+                function applyRotation(axisString, rotation) {
+                    const isNegative = axisString.startsWith('-');
+                    const axis = isNegative ? axisString.substring(1) : axisString;
+                    const direction = isNegative ? -1 : 1;
+                    
+                    if (axis === 'x') {
+                        cube.rotation.x = rotation * direction;
+                    } else if (axis === 'y') {
+                        cube.rotation.y = rotation * direction;
+                    } else if (axis === 'z') {
+                        cube.rotation.z = rotation * direction;
+                    }
+                }
+                
+                // Apply rotations with direction support
+                applyRotation(ROTATION_AXIS_1, axis1Rotation);
+                applyRotation(ROTATION_AXIS_2, axis2Rotation);
+                
+                // ========== COLOR CHANGES (every 90 degrees) ==========
+                // Calculate how many 90° rotations have been completed
+                const rotations90deg = Math.floor((easedProgress * cube.userData.rotationCount));
+                
+                // Determine current color value (0, 1, 2, 3... up to finalValue)
+                const colorValue = Math.min(rotations90deg, cube.userData.finalValue);
+                
+                // Only update color if it changed
+                if (colorValue !== cube.userData.currentValue) {
+                    cube.userData.currentValue = colorValue;
+                    const newColor = getColorForValue(colorValue);
+                    cube.material.color.setHex(newColor);
+                    console.log(`Cube [${row},${col}] changed to color value ${colorValue}`);
+                }
+                
+                // Stop animating when complete
+                if (cube.userData.animProgress >= 1) {
+                    cube.userData.isAnimating = false;
+                    console.log(`Cube [${row},${col}] finished animating`);
+                }
+            }
+        }
+    }
+    
+    renderer.render(scene, camera);
+}
+
+animate();
+
+// ========== HANDLE WINDOW RESIZE ==========
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+    </script>
+</body>
+</html>
