@@ -112,8 +112,21 @@ const camera = new THREE.PerspectiveCamera(
     0.1,                                   // Near clipping plane
     1000                                   // Far clipping plane
 );
-// Position camera to see the grid from above at an angle
-camera.position.set(0, 20, 0);
+        
+// Adjust camera height based on screen aspect ratio
+const aspectRatio = window.innerWidth / window.innerHeight;
+
+if (aspectRatio < 1) {
+    // Portrait mode (phones) - pull back more
+    camera.position.set(0, 28, 0);
+} else if (aspectRatio < 1.5) {
+    // Square-ish or narrow landscape - medium distance
+    camera.position.set(0, 24, 0);
+} else {
+    // Wide landscape (desktop) - closer
+    camera.position.set(0, 20, 0);
+}
+
 camera.lookAt(0, 0, 0);  // Look at center of scene
 
 // ========== Create a RENDERER with anti-aliasing ==========
@@ -455,6 +468,19 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // Recalculate camera height for new aspect ratio
+    const aspectRatio = window.innerWidth / window.innerHeight;
+    
+    if (aspectRatio < 1) {
+        camera.position.set(0, 28, 0);
+    } else if (aspectRatio < 1.5) {
+        camera.position.set(0, 24, 0);
+    } else {
+        camera.position.set(0, 20, 0);
+    }
+    
+    camera.lookAt(0, 0, 0);
 });
     </script>
 </body>
