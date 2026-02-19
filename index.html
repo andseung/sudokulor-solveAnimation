@@ -118,7 +118,7 @@ const aspectRatio = window.innerWidth / window.innerHeight;
 
 if (aspectRatio < 1) {
     // Portrait mode (phones) - pull back more
-    camera.position.set(0, 35, 0);
+    camera.position.set(0, 45, 0);
 } else if (aspectRatio < 1.5) {
     // Square-ish or narrow landscape - medium distance
     camera.position.set(0, 24, 0);
@@ -473,7 +473,7 @@ window.addEventListener('resize', () => {
     const aspectRatio = window.innerWidth / window.innerHeight;
     
     if (aspectRatio < 1) {
-        camera.position.set(0, 35, 0);
+        camera.position.set(0, 45, 0);
     } else if (aspectRatio < 1.5) {
         camera.position.set(0, 24, 0);
     } else {
